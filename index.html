@@ -1,0 +1,881 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1d1b19">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Masquerade">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="description" content="Chess where every piece is lying about what it is.">
+<title>Masquerade Chess</title>
+<style>
+:root {
+  --bg: #1d1b19;
+  --panel: #26231f;
+  --ink: #ece5d8;
+  --muted: #948b7c;
+  --light-sq: #d8cfb8;
+  --dark-sq: #6f7f6a;
+  --sel-sq: #d9a441;
+  --last-sq: #a8a05f;
+  --check-sq: #b5533f;
+  --white-piece: #fbf7ee;
+  --black-piece: #221f1c;
+  --line: #3a352e;
+  --button: #3a352e;
+  --board: 340px;
+  --sq: calc(var(--board) / 8);
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  overscroll-behavior: none;
+}
+body {
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right))
+           max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  touch-action: manipulation;
+}
+#app { display: flex; flex-direction: column; align-items: center; gap: 12px; }
+
+/* ---- board ---- */
+#board-wrap { position: relative; width: var(--board); height: var(--board); flex: none; }
+#board {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  width: 100%; height: 100%;
+  border-radius: 3px;
+  overflow: hidden;
+  user-select: none; -webkit-user-select: none;
+}
+.sq { position: relative; display: flex; align-items: center; justify-content: center; }
+.sq.light { background: var(--light-sq); }
+.sq.dark { background: var(--dark-sq); }
+.sq.last { background: var(--last-sq); }
+.sq.check { background: var(--check-sq); }
+.sq.sel { background: var(--sel-sq); }
+.glyph {
+  font-size: calc(var(--sq) * 0.72);
+  line-height: 1;
+  margin-top: calc(var(--sq) * -0.04);
+  pointer-events: none;
+}
+.glyph.w { color: var(--white-piece); text-shadow: 0 0 1px #2a2622, 1px 0 0 #2a2622, -1px 0 0 #2a2622, 0 1px 0 #2a2622, 0 -1px 0 #2a2622; }
+.glyph.b { color: var(--black-piece); }
+.coord {
+  position: absolute; font-size: calc(var(--sq) * 0.17); font-weight: 600;
+  pointer-events: none; opacity: 0.75;
+}
+.coord.rank { top: 3px; left: 4px; }
+.coord.file { bottom: 1px; right: 4px; }
+.light .coord { color: #8d8264; }
+.dark .coord { color: #9cb096; }
+.badge {
+  position: absolute; top: 4%; right: 4%;
+  width: calc(var(--sq) * 0.34); height: calc(var(--sq) * 0.34);
+  border-radius: 50%; background: var(--sel-sq); color: #2a2622;
+  border: 1px solid #2a2622;
+  display: flex; align-items: center; justify-content: center;
+  font-size: calc(var(--sq) * 0.21); font-weight: 700;
+  pointer-events: none;
+}
+.dot {
+  position: absolute;
+  width: calc(var(--sq) * 0.24); height: calc(var(--sq) * 0.24);
+  border-radius: 50%; background: rgba(30, 28, 24, 0.42);
+  pointer-events: none;
+}
+.hidden { display: none !important; }
+
+/* ---- hand-off curtain ---- */
+#curtain {
+  position: absolute; inset: 0; z-index: 5;
+  background: var(--panel);
+  border-radius: 3px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 14px; padding: 24px; text-align: center;
+}
+#curtain-title { font-size: 20px; font-weight: 700; }
+#curtain-note { color: var(--muted); font-size: 14px; line-height: 1.45; }
+
+/* ---- panel ---- */
+#panel {
+  width: var(--board); background: var(--panel);
+  border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
+}
+#turn { font-size: 17px; font-weight: 700; }
+#turn.over { color: var(--sel-sq); }
+#status { color: var(--muted); font-size: 13px; line-height: 1.45; min-height: 2.9em; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 0; width: 100%; }
+#inspect { font-size: 13px; line-height: 1.5; min-height: 6.5em; white-space: pre-line; }
+#log {
+  background: #1b1916; color: var(--muted); border-radius: 4px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px; line-height: 1.5; padding: 6px 8px;
+  height: 108px; overflow-y: auto; white-space: pre; -webkit-overflow-scrolling: touch;
+}
+#buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+button {
+  font: inherit; font-size: 14px; color: var(--ink); background: var(--button);
+  border: 0; border-radius: 5px; padding: 11px 8px; cursor: pointer;
+  touch-action: manipulation;
+}
+button:active { background: #4a443a; }
+button.primary { background: var(--sel-sq); color: #2a2622; font-weight: 600; }
+
+/* ---- modal ---- */
+#modal {
+  position: fixed; inset: 0; z-index: 20; background: rgba(12, 11, 10, 0.78);
+  display: flex; align-items: center; justify-content: center; padding: 18px;
+}
+#modal-card {
+  background: var(--panel); border-radius: 10px; padding: 22px;
+  width: min(420px, 100%); max-height: 86vh; overflow-y: auto;
+}
+#modal-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+#modal-body { color: var(--muted); font-size: 14px; line-height: 1.55; white-space: pre-line; }
+#modal-buttons { display: flex; flex-direction: column; gap: 8px; margin-top: 18px; }
+#modal-buttons button { padding: 13px; }
+
+@media (max-width: 899px) and (max-height: 740px) {
+  #status { min-height: 2.4em; }
+  #inspect { min-height: 5.2em; }
+  #log { height: 72px; }
+}
+
+@media (min-width: 900px) {
+  body { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+  #app { flex-direction: row; align-items: flex-start; gap: 16px; }
+  #panel { width: 320px; align-self: stretch; }
+  #log { flex: 1; height: auto; min-height: 108px; }
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="board-wrap">
+    <div id="board"></div>
+    <div id="curtain" class="hidden">
+      <div id="curtain-title"></div>
+      <div id="curtain-note"></div>
+      <button id="curtain-go" class="primary">I'm holding the phone</button>
+    </div>
+  </div>
+  <div id="panel">
+    <div id="turn"></div>
+    <div id="status"></div>
+    <hr>
+    <div id="inspect">Tap one of your pieces.</div>
+    <hr>
+    <div id="log"></div>
+    <div id="buttons">
+      <button id="btn-new">New game</button>
+      <button id="btn-mode"></button>
+      <button id="btn-rules">How to play</button>
+      <button id="btn-reveal">Give up and reveal</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal" class="hidden">
+  <div id="modal-card">
+    <div id="modal-title"></div>
+    <div id="modal-body"></div>
+    <div id="modal-buttons"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// --------------------------------------------------------------------------
+// SETTINGS
+// --------------------------------------------------------------------------
+
+const PROBE_MODE = "limited";        // "limited" | "free" | "forfeit"
+const FREE_PROBES = 3;
+const KNOW_OWN_KING = true;
+const REVEAL_OWN_AFTER_MOVE = true;
+const DEDUCTION_ASSIST = true;
+const AI_DELAY_MS = 500;
+
+// --------------------------------------------------------------------------
+// RULES ENGINE
+// --------------------------------------------------------------------------
+
+const ROLES = ["pawn", "knight", "bishop", "rook", "queen", "king"];
+const ARMY = ["pawn", "pawn", "pawn", "pawn", "pawn", "pawn", "pawn", "pawn",
+              "knight", "knight", "bishop", "bishop", "rook", "rook", "queen", "king"];
+const BACK_MODELS = ["rook", "knight", "bishop", "queen", "king", "bishop", "knight", "rook"];
+
+const GLYPH = { pawn: "♟", knight: "♞", bishop: "♝",
+                rook: "♜", queen: "♛", king: "♚" };
+const INITIAL = { pawn: "P", knight: "N", bishop: "B", rook: "R", queen: "Q", king: "K" };
+const NAME = { pawn: "Pawn", knight: "Knight", bishop: "Bishop",
+               rook: "Rook", queen: "Queen", king: "King" };
+
+const OWN_VALUE = { pawn: 1, knight: 3, bishop: 3.2, rook: 5, queen: 9, king: 100 };
+const GUESS_VALUE = { pawn: 1, knight: 3, bishop: 3.2, rook: 5, queen: 9, king: 14 };
+
+const KNIGHT_HOPS = [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+const ORTHO = [[-1,0],[1,0],[0,-1],[0,1]];
+const DIAG = [[-1,-1],[-1,1],[1,-1],[1,1]];
+
+const randInt = (n) => Math.floor(Math.random() * n);
+const rowOf = (i) => i >> 3;
+const colOf = (i) => i & 7;
+const squareName = (i) => "abcdefgh"[colOf(i)] + (8 - rowOf(i));
+
+function shuffled(list) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = randInt(i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+// The king is never dealt into a pawn shape, and everyone knows it.
+function initialCandidates(model) {
+  return new Set(model === "pawn" ? ROLES.filter((r) => r !== "king") : ROLES);
+}
+
+class Piece {
+  constructor(color, model, role, pid) {
+    this.color = color;       // "w" or "b"
+    this.model = model;       // what everyone SEES
+    this.role = role;         // what it actually IS
+    this.pid = pid;
+    this.moved = false;
+    this.candidates = initialCandidates(model);   // public, shared by both players
+    this.probesFailed = 0;
+  }
+}
+
+/** Every square a piece of `role` standing on (r, c) could move to. */
+function targets(board, r, c, color, role, moved) {
+  const out = new Set();
+  const at = (rr, cc) => board[rr * 8 + cc];
+
+  if (role === "pawn") {
+    const d = color === "w" ? -1 : 1;
+    const r1 = r + d;
+    if (r1 >= 0 && r1 < 8 && !at(r1, c)) {
+      out.add(r1 * 8 + c);
+      const r2 = r + 2 * d;
+      if (!moved && r2 >= 0 && r2 < 8 && !at(r2, c)) out.add(r2 * 8 + c);
+    }
+    for (const dc of [-1, 1]) {
+      const rr = r + d, cc = c + dc;
+      if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
+        const t = at(rr, cc);
+        if (t && t.color !== color) out.add(rr * 8 + cc);
+      }
+    }
+  } else if (role === "knight") {
+    for (const [dr, dc] of KNIGHT_HOPS) {
+      const rr = r + dr, cc = c + dc;
+      if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
+        const t = at(rr, cc);
+        if (!t || t.color !== color) out.add(rr * 8 + cc);
+      }
+    }
+  } else if (role === "king") {
+    for (let dr = -1; dr <= 1; dr++) {
+      for (let dc = -1; dc <= 1; dc++) {
+        if (!dr && !dc) continue;
+        const rr = r + dr, cc = c + dc;
+        if (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
+          const t = at(rr, cc);
+          if (!t || t.color !== color) out.add(rr * 8 + cc);
+        }
+      }
+    }
+  } else {
+    const dirs = role === "queen" ? ORTHO.concat(DIAG) : (role === "rook" ? ORTHO : DIAG);
+    for (const [dr, dc] of dirs) {
+      let rr = r + dr, cc = c + dc;
+      while (rr >= 0 && rr < 8 && cc >= 0 && cc < 8) {
+        const t = at(rr, cc);
+        if (!t) {
+          out.add(rr * 8 + cc);
+        } else {
+          if (t.color !== color) out.add(rr * 8 + cc);
+          break;
+        }
+        rr += dr; cc += dc;
+      }
+    }
+  }
+  return out;
+}
+
+class Game {
+  constructor() { this.reset(); }
+
+  // -- setup ---------------------------------------------------------------
+
+  reset() {
+    this.board = new Array(64).fill(null);
+    this.turn = "w";
+    this.over = null;
+    this.winner = null;
+    this.history = [];
+    this.probesLeft = { w: FREE_PROBES, b: FREE_PROBES };
+    this.lastMove = null;
+    let pid = 0;
+    for (const [color, backR, pawnR] of [["b", 0, 1], ["w", 7, 6]]) {
+      const roles = shuffled(ARMY);
+      const back = roles.slice(0, 8), front = roles.slice(8);
+      const ki = front.indexOf("king");
+      if (ki !== -1) {
+        const j = randInt(8);
+        [front[ki], back[j]] = [back[j], front[ki]];
+      }
+      for (let c = 0; c < 8; c++) {
+        this.board[backR * 8 + c] = new Piece(color, BACK_MODELS[c], back[c], pid++);
+        this.board[pawnR * 8 + c] = new Piece(color, "pawn", front[c], pid++);
+      }
+    }
+  }
+
+  // -- queries -------------------------------------------------------------
+
+  *pieces(color) {
+    for (let i = 0; i < 64; i++) {
+      const p = this.board[i];
+      if (p && p.color === color) yield [i, p];
+    }
+  }
+
+  targetsOf(i) {
+    const p = this.board[i];
+    if (!p) return new Set();
+    return targets(this.board, rowOf(i), colOf(i), p.color, p.role, p.moved);
+  }
+
+  allMoves(color) {
+    const out = [];
+    for (const [i, p] of this.pieces(color)) {
+      for (const t of targets(this.board, rowOf(i), colOf(i), p.color, p.role, p.moved)) {
+        out.push([i, t]);
+      }
+    }
+    return out;
+  }
+
+  findKing(color) {
+    for (const [i, p] of this.pieces(color)) if (p.role === "king") return i;
+    return null;
+  }
+
+  kingAttacked(color) {
+    const k = this.findKing(color);
+    if (k === null) return false;
+    const enemy = color === "w" ? "b" : "w";
+    for (const [i, p] of this.pieces(enemy)) {
+      if (targets(this.board, rowOf(i), colOf(i), p.color, p.role, p.moved).has(k)) return true;
+    }
+    return false;
+  }
+
+  // -- public deduction ----------------------------------------------------
+
+  observeSuccess(p, frm, to) {
+    const kept = new Set();
+    for (const role of p.candidates) {
+      if (targets(this.board, rowOf(frm), colOf(frm), p.color, role, p.moved).has(to)) kept.add(role);
+    }
+    if (kept.size) p.candidates = kept;
+  }
+
+  observeFailure(p, frm, to) {
+    p.probesFailed += 1;
+    const kept = new Set();
+    for (const role of p.candidates) {
+      if (!targets(this.board, rowOf(frm), colOf(frm), p.color, role, p.moved).has(to)) kept.add(role);
+    }
+    if (kept.size) p.candidates = kept;
+  }
+
+  // -- moving --------------------------------------------------------------
+
+  attempt(frm, to) {
+    if (this.over) return { ok: false, text: "The game is finished.", lostTurn: false };
+    const p = this.board[frm];
+    if (!p || p.color !== this.turn || frm === to) return { ok: false, text: "", lostTurn: false };
+
+    if (targets(this.board, rowOf(frm), colOf(frm), p.color, p.role, p.moved).has(to)) {
+      this.observeSuccess(p, frm, to);
+      return { ok: true, text: this.apply(frm, to), lostTurn: false };
+    }
+
+    // Illegal: a probe.
+    this.observeFailure(p, frm, to);
+    const note = GLYPH[p.model] + " cannot reach " + squareName(to) + ".";
+    this.history.push("  ?  " + (p.color === "w" ? "W" : "B") +
+                      squareName(frm) + "✗" + squareName(to));
+
+    if (PROBE_MODE === "free") return { ok: false, text: note + " (free probe)", lostTurn: false };
+    if (PROBE_MODE === "limited" && this.probesLeft[p.color] > 0) {
+      const left = --this.probesLeft[p.color];
+      return { ok: false, lostTurn: false,
+               text: note + " " + left + " free probe" + (left === 1 ? "" : "s") + " left." };
+    }
+
+    this.passTurn();
+    return { ok: false, text: note + " You lose the turn.", lostTurn: true };
+  }
+
+  apply(frm, to) {
+    const p = this.board[frm];
+    const captured = this.board[to];
+    this.board[to] = p;
+    this.board[frm] = null;
+    p.moved = true;
+
+    let line = (p.color === "w" ? "W " : "B ") + GLYPH[p.model] +
+               squareName(frm) + (captured ? "x" : "–") + squareName(to);
+
+    let promoted = false;
+    if (p.role === "pawn" && rowOf(to) === (p.color === "w" ? 0 : 7)) {
+      p.role = "queen";
+      p.model = "queen";
+      p.candidates = new Set(["queen"]);
+      promoted = true;
+      line += "=Q";
+    }
+
+    this.lastMove = [frm, to];
+    this.history.push(line);
+
+    if (captured && captured.role === "king") {
+      this.winner = p.color;
+      this.over = (p.color === "w" ? "White" : "Black") + " captured the " +
+                  (captured.color === "b" ? "black" : "white") + " king.";
+      return "The " + NAME[captured.model] + " was the king! " + this.over;
+    }
+
+    this.passTurn();
+
+    let msg = "";
+    if (captured) {
+      msg = "Captured a " + NAME[captured.model].toLowerCase() +
+            "-shaped piece — it was really a " + NAME[captured.role].toLowerCase() + ". ";
+    }
+    if (promoted) msg += "A hidden pawn promoted to a queen. ";
+    return msg;
+  }
+
+  passTurn() {
+    this.turn = this.turn === "w" ? "b" : "w";
+    if (!this.allMoves(this.turn).length) {
+      this.over = "No legal moves left — a draw.";
+      this.winner = null;
+    }
+  }
+
+  // -- engine --------------------------------------------------------------
+
+  guessValue(p) {
+    if (!p.candidates.size) return 3.0;
+    if (p.candidates.size === 1 && p.candidates.has("king")) return 500.0;
+    let sum = 0;
+    for (const r of p.candidates) sum += GUESS_VALUE[r];
+    return sum / p.candidates.size;
+  }
+
+  /** Rough chance `byColor` can hit `sq`, judged only from what candidates allow. */
+  threatLevel(board, sq, byColor) {
+    let worst = 0;
+    for (let i = 0; i < 64; i++) {
+      const p = board[i];
+      if (!p || p.color !== byColor || !p.candidates.size) continue;
+      let hits = 0;
+      for (const role of p.candidates) {
+        if (targets(board, rowOf(i), colOf(i), p.color, role, p.moved).has(sq)) hits++;
+      }
+      worst = Math.max(worst, hits / p.candidates.size);
+      if (worst >= 1) return 1;
+    }
+    return worst;
+  }
+
+  engineMove(color) {
+    const moves = this.allMoves(color);
+    if (!moves.length) return null;
+    const enemy = color === "b" ? "w" : "b";
+    let best = [], bestScore = null;
+
+    for (const [frm, to] of moves) {
+      const mover = this.board[frm];
+      const victim = this.board[to];
+      let score = 0;
+
+      if (victim) score += 9.0 * this.guessValue(victim);
+
+      const forward = color === "b" ? rowOf(to) - rowOf(frm) : rowOf(frm) - rowOf(to);
+      score += 0.10 * forward;
+      score += 0.12 * (3.5 - Math.abs(3.5 - colOf(to)));
+
+      this.board[to] = mover;
+      this.board[frm] = null;
+      const risk = this.threatLevel(this.board, to, enemy);
+      this.board[frm] = mover;
+      this.board[to] = victim;
+      score -= 6.5 * risk * OWN_VALUE[mover.role];
+
+      score += Math.random() * 0.7;
+
+      if (bestScore === null || score > bestScore + 1e-9) {
+        best = [[frm, to]];
+        bestScore = score;
+      } else if (Math.abs(score - bestScore) <= 1e-9) {
+        best.push([frm, to]);
+      }
+    }
+
+    const [frm, to] = best[randInt(best.length)];
+    this.observeSuccess(this.board[frm], frm, to);
+    return [frm, to, this.apply(frm, to)];
+  }
+}
+
+// --------------------------------------------------------------------------
+// INTERFACE
+// --------------------------------------------------------------------------
+
+const $ = (id) => document.getElementById(id);
+const boardEl = $("board");
+const squares = [];
+
+for (let i = 0; i < 64; i++) {
+  const sq = document.createElement("div");
+  sq.className = "sq " + ((rowOf(i) + colOf(i)) % 2 === 0 ? "light" : "dark");
+  if (colOf(i) === 0) {
+    const rank = document.createElement("span");
+    rank.className = "coord rank";
+    rank.textContent = 8 - rowOf(i);
+    sq.appendChild(rank);
+  }
+  if (rowOf(i) === 7) {
+    const file = document.createElement("span");
+    file.className = "coord file";
+    file.textContent = "abcdefgh"[colOf(i)];
+    sq.appendChild(file);
+  }
+  const dot = document.createElement("span");
+  dot.className = "dot hidden";
+  const glyph = document.createElement("span");
+  glyph.className = "glyph";
+  const badge = document.createElement("span");
+  badge.className = "badge hidden";
+  sq.append(dot, glyph, badge);
+  sq.addEventListener("click", () => onClick(i));
+  boardEl.appendChild(sq);
+  squares.push({ sq, glyph, badge, dot });
+}
+
+let mode = "bot";          // "bot" | "hotseat"
+let game = new Game();
+let sel = null;
+let busy = false;
+let revealed = false;
+let handoff = false;       // hotseat: board is curtained until the next player taps
+
+const viewer = () => (mode === "hotseat" ? game.turn : "w");
+const colorName = (c) => (c === "w" ? "White" : "Black");
+
+function layout() {
+  const w = document.documentElement.clientWidth;
+  const h = window.innerHeight;
+  const wide = w >= 900;
+  const size = wide ? Math.min(h - 40, w - 380, 640)
+                    : Math.min(w - 20, h - (h < 740 ? 330 : 380), 560);
+  document.documentElement.style.setProperty(
+    "--board", Math.max(240, Math.floor(size / 8) * 8) + "px");
+}
+window.addEventListener("resize", layout);
+window.addEventListener("orientationchange", layout);
+
+// -- drawing ---------------------------------------------------------------
+
+function render() {
+  const me = viewer();
+  const checkSq = (KNOW_OWN_KING && !game.over && !handoff && game.kingAttacked(me))
+    ? game.findKing(me) : null;
+  const hints = hintSquares();
+
+  for (let i = 0; i < 64; i++) {
+    const { sq, glyph, badge, dot } = squares[i];
+    const p = game.board[i];
+
+    sq.classList.toggle("last", !handoff && !!game.lastMove && game.lastMove.includes(i));
+    sq.classList.toggle("check", checkSq === i);
+    sq.classList.toggle("sel", sel === i);
+    dot.classList.toggle("hidden", !hints.has(i));
+
+    if (!p) {
+      glyph.textContent = "";
+      badge.classList.add("hidden");
+      continue;
+    }
+    glyph.textContent = GLYPH[p.model];
+    glyph.className = "glyph " + p.color;
+
+    let mark = null;
+    if (revealed || game.over) mark = INITIAL[p.role];
+    else if (p.color === me && KNOW_OWN_KING && p.role === "king") mark = "K";
+    else if (p.color === me && REVEAL_OWN_AFTER_MOVE && p.moved) mark = INITIAL[p.role];
+    badge.textContent = mark || "";
+    badge.classList.toggle("hidden", !mark);
+  }
+
+  renderTurn();
+  $("log").textContent = game.history.slice(-200).join("\n");
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+function renderTurn() {
+  const el = $("turn");
+  el.classList.toggle("over", !!game.over);
+  if (game.over) { el.textContent = "Game over"; return; }
+  let who = mode === "hotseat" ? colorName(game.turn) + " to move"
+                               : (game.turn === "w" ? "Your move" : "Black is thinking");
+  if (PROBE_MODE === "limited" && (mode === "hotseat" || game.turn === "w")) {
+    const left = game.probesLeft[game.turn];
+    who += "   ·   " + left + " free probe" + (left === 1 ? "" : "s");
+  }
+  el.textContent = who;
+}
+
+/** Only ever shows moves for pieces the current viewer has already identified. */
+function hintSquares() {
+  if (sel === null || handoff) return new Set();
+  const p = game.board[sel];
+  if (!p || p.color !== viewer()) return new Set();
+  const identified = revealed
+    || (KNOW_OWN_KING && p.role === "king")
+    || (REVEAL_OWN_AFTER_MOVE && p.moved);
+  return identified ? game.targetsOf(sel) : new Set();
+}
+
+function setStatus(text) { $("status").textContent = text; }
+function setInspect(text) { $("inspect").textContent = text; }
+
+function describe(i) {
+  const p = game.board[i];
+  if (!p) { setInspect("Tap one of your pieces."); return; }
+  const me = viewer();
+  const side = p.color === me ? "Your" : colorName(p.color) + "'s";
+  const lines = [side + " " + NAME[p.model].toLowerCase() + "-shaped piece on " + squareName(i)];
+
+  let known = null;
+  if (p.color === me && KNOW_OWN_KING && p.role === "king") known = "king";
+  if (p.color === me && REVEAL_OWN_AFTER_MOVE && p.moved) known = p.role;
+
+  if (known) {
+    lines.push("Truly a " + NAME[known].toUpperCase() + ".");
+  } else if (DEDUCTION_ASSIST) {
+    const maybe = ROLES.filter((r) => p.candidates.has(r)).map((r) => NAME[r]);
+    const ruled = ROLES.filter((r) => !p.candidates.has(r)).map((r) => NAME[r]);
+    lines.push("Could be: " + maybe.join(", "));
+    if (ruled.length) lines.push("Ruled out: " + ruled.join(", "));
+  } else {
+    lines.push("Unknown.");
+  }
+
+  lines.push("", "Moves made: " + (p.moved ? "some" : "0") +
+                 "    Failed probes: " + p.probesFailed);
+  setInspect(lines.join("\n"));
+}
+
+// -- interaction -----------------------------------------------------------
+
+function onClick(i) {
+  if (busy || handoff || game.over) return;
+  const p = game.board[i];
+
+  if (sel === i) { sel = null; render(); return; }
+
+  if (p && p.color === game.turn) {
+    sel = i;
+    describe(i);
+    render();
+    return;
+  }
+
+  if (sel === null) {
+    if (p) describe(i); else setStatus("Pick one of your own pieces first.");
+    render();
+    return;
+  }
+
+  const result = game.attempt(sel, i);
+  const from = sel;
+  const turnChanged = result.ok || result.lostTurn;
+  if (turnChanged) sel = null;
+
+  let text = result.text || "";
+  if (turnChanged && !game.over && KNOW_OWN_KING && game.kingAttacked(game.turn)) {
+    text += mode === "hotseat" ? " " + colorName(game.turn) + "'s king is under attack."
+                               : "";
+  }
+  setStatus(text);
+
+  if (!turnChanged) describe(from);
+  else if (!game.over) setInspect("Tap one of your pieces.");
+
+  if (game.over) { render(); finish(); return; }
+
+  if (mode === "bot" && game.turn === "b") {
+    busy = true;
+    render();
+    setTimeout(engineTurn, AI_DELAY_MS);
+  } else if (mode === "hotseat" && turnChanged) {
+    startHandoff();
+  } else {
+    render();
+  }
+}
+
+function engineTurn() {
+  const move = game.engineMove("b");
+  busy = false;
+  if (!move) { render(); finish(); return; }
+  const [frm, to, note] = move;
+  let tail = "";
+  if (!game.over && KNOW_OWN_KING && game.kingAttacked("w")) tail = "Your king is under attack.";
+  setStatus("Black plays " + squareName(frm) + "–" + squareName(to) + ". " + note + tail);
+  render();
+  if (game.over) finish();
+}
+
+// -- hotseat hand-off ------------------------------------------------------
+
+function startHandoff() {
+  handoff = true;
+  sel = null;
+  setInspect("Tap one of your pieces.");
+  $("curtain-title").textContent = colorName(game.turn) + "'s turn";
+  $("curtain-note").textContent =
+    "Hand the phone over. The board is hidden so the other player doesn't see "
+    + colorName(game.turn).toLowerCase() + "'s identities.";
+  $("curtain").classList.remove("hidden");
+  render();
+}
+
+$("curtain-go").addEventListener("click", () => {
+  handoff = false;
+  $("curtain").classList.add("hidden");
+  if (KNOW_OWN_KING && game.kingAttacked(game.turn)) {
+    setStatus("Your king is under attack.");
+  } else {
+    setStatus(colorName(game.turn) + " to move.");
+  }
+  render();
+});
+
+// -- modals ----------------------------------------------------------------
+
+function showModal(title, body, buttons) {
+  $("modal-title").textContent = title;
+  $("modal-body").textContent = body;
+  const box = $("modal-buttons");
+  box.textContent = "";
+  for (const [label, cls, action] of buttons) {
+    const b = document.createElement("button");
+    b.textContent = label;
+    if (cls) b.className = cls;
+    b.addEventListener("click", () => { $("modal").classList.add("hidden"); action(); });
+    box.appendChild(b);
+  }
+  $("modal").classList.remove("hidden");
+}
+
+function finish() {
+  revealed = true;
+  render();
+  let title;
+  if (game.winner === null) title = "Draw";
+  else if (mode === "hotseat") title = colorName(game.winner) + " wins";
+  else title = game.winner === "w" ? "You win" : "You lose";
+  const lead = (mode === "bot" && game.winner === "w")
+    ? "You found and took the black king.\n\n" : "";
+  showModal(title, lead + game.over + "\n\nEvery identity is now shown on the board.",
+            [["New game", "primary", newGame], ["Look at the board", "", () => {}]]);
+}
+
+function newGame() {
+  game = new Game();
+  sel = null;
+  busy = false;
+  revealed = false;
+  handoff = false;
+  $("curtain").classList.add("hidden");
+  setInspect("Tap one of your pieces.");
+  setStatus("New shuffle. Both armies are strangers again.");
+  render();
+}
+
+function setMode(next) {
+  mode = next;
+  $("btn-mode").textContent = mode === "hotseat" ? "Switch to bot" : "Switch to 1v1";
+  newGame();
+}
+
+function askMode() {
+  showModal("Masquerade Chess", "Who is playing black?", [
+    ["Play against the bot", "primary", () => setMode("bot")],
+    ["1v1 on this device", "primary", () => setMode("hotseat")],
+  ]);
+}
+
+function showRules() {
+  const opponent = mode === "hotseat"
+    ? "• 1v1: the board is curtained between turns, so pass the device over "
+      + "before tapping through.\n"
+    : "• Black is just as blind as you are: it deduces your pieces from the "
+      + "same public evidence.\n";
+  showModal("How to play",
+    "The board looks like chess, but each army has secretly shuffled its 16 true "
+    + "identities among its 16 bodies. A pawn shape may move like a rook. Your king "
+    + "is hiding inside one of your back-rank shapes.\n\n"
+    + "• Win by capturing the enemy king. There is no checkmate.\n"
+    + "• The king is always dealt into one of the eight back-rank bodies, never "
+    + "a pawn shape — so there are only eight suspects.\n"
+    + "• Tap a piece, then tap a square. If that piece can't do it, you've "
+    + "learned something — the panel keeps track.\n"
+    + "• Failed attempts are free for your first " + FREE_PROBES + " probes, then "
+    + "they cost you the turn.\n"
+    + "• Your own king is marked. Your other pieces confess to you once they've "
+    + "successfully moved.\n"
+    + opponent
+    + "• No castling, no en passant. Hidden pawns still double-step on their "
+    + "first move and still promote.",
+    [["Got it", "primary", () => {}]]);
+}
+
+$("btn-new").addEventListener("click", newGame);
+$("btn-mode").addEventListener("click", () => setMode(mode === "hotseat" ? "bot" : "hotseat"));
+$("btn-rules").addEventListener("click", showRules);
+$("btn-reveal").addEventListener("click", () => {
+  if (handoff) return;
+  revealed = !revealed;
+  setStatus(revealed ? "All identities shown." : "Identities hidden again.");
+  render();
+});
+
+layout();
+$("btn-mode").textContent = "Switch to 1v1";
+setStatus("White moves. Nobody knows what anything is yet.");
+render();
+askMode();
+</script>
+</body>
+</html>

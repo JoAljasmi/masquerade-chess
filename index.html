@@ -108,6 +108,10 @@ body {
   width: var(--board); background: var(--panel);
   border-radius: 6px; padding: 14px; display: flex; flex-direction: column; gap: 10px;
 }
+#panel-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+#detail { display: flex; flex-direction: column; gap: 10px; }
+#app.collapsed #detail { display: none; }
+#btn-toggle { flex: none; padding: 7px 12px; font-size: 13px; color: var(--muted); }
 #turn { font-size: 17px; font-weight: 700; }
 #turn.over { color: var(--sel-sq); }
 #status { color: var(--muted); font-size: 13px; line-height: 1.45; min-height: 2.9em; }
@@ -152,6 +156,8 @@ button.primary { background: var(--sel-sq); color: #2a2622; font-weight: 600; }
   body { display: flex; justify-content: center; align-items: center; min-height: 100vh; }
   #app { flex-direction: row; align-items: flex-start; gap: 16px; }
   #panel { width: 320px; align-self: stretch; }
+  #app.collapsed #panel { width: 210px; align-self: flex-start; }
+  #detail { flex: 1; }
   #log { flex: 1; height: auto; min-height: 108px; }
 }
 </style>
@@ -167,17 +173,22 @@ button.primary { background: var(--sel-sq); color: #2a2622; font-weight: 600; }
     </div>
   </div>
   <div id="panel">
-    <div id="turn"></div>
+    <div id="panel-head">
+      <div id="turn"></div>
+      <button id="btn-toggle" aria-label="Show or hide the menu">Hide menu</button>
+    </div>
     <div id="status"></div>
-    <hr>
-    <div id="inspect">Tap one of your pieces.</div>
-    <hr>
-    <div id="log"></div>
-    <div id="buttons">
-      <button id="btn-new">New game</button>
-      <button id="btn-mode"></button>
-      <button id="btn-rules">How to play</button>
-      <button id="btn-reveal">Give up and reveal</button>
+    <div id="detail">
+      <hr>
+      <div id="inspect">Tap one of your pieces.</div>
+      <hr>
+      <div id="log"></div>
+      <div id="buttons">
+        <button id="btn-new">New game</button>
+        <button id="btn-mode"></button>
+        <button id="btn-rules">How to play</button>
+        <button id="btn-reveal">Give up and reveal</button>
+      </div>
     </div>
   </div>
 </div>
@@ -587,16 +598,18 @@ let sel = null;
 let busy = false;
 let revealed = false;
 let handoff = false;       // hotseat: board is curtained until the next player taps
+let collapsed = false;     // panel folded down to just the turn line, for a bigger board
 
 const viewer = () => (mode === "hotseat" ? game.turn : "w");
 const colorName = (c) => (c === "w" ? "White" : "Black");
 
+/** Board fills whatever the panel isn't using, so collapsing it buys real estate. */
 function layout() {
   const w = document.documentElement.clientWidth;
   const h = window.innerHeight;
-  const wide = w >= 900;
-  const size = wide ? Math.min(h - 40, w - 380, 640)
-                    : Math.min(w - 20, h - (h < 740 ? 330 : 380), 560);
+  const size = w >= 900
+    ? Math.min(h - 28, w - (collapsed ? 250 : 380), 820)
+    : Math.min(w - 20, h - (collapsed ? 130 : (h < 740 ? 330 : 380)), 620);
   document.documentElement.style.setProperty(
     "--board", Math.max(240, Math.floor(size / 8) * 8) + "px");
 }
@@ -860,6 +873,13 @@ function showRules() {
     + "first move and still promote.",
     [["Got it", "primary", () => {}]]);
 }
+
+$("btn-toggle").addEventListener("click", () => {
+  collapsed = !collapsed;
+  $("app").classList.toggle("collapsed", collapsed);
+  $("btn-toggle").textContent = collapsed ? "Menu" : "Hide menu";
+  layout();
+});
 
 $("btn-new").addEventListener("click", newGame);
 $("btn-mode").addEventListener("click", () => setMode(mode === "hotseat" ? "bot" : "hotseat"));
